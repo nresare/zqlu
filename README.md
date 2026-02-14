@@ -1,7 +1,7 @@
 # zqlu
 
 zqlu is a text based format for public keys that is efficient and convenient. 
-A key looks something like this: zq.luCDfAuRyJiHhdUdXf6zx67HP1wg7MaLg9BJ6ghdqMSFEvx
+A key looks something like this: `zq.luCDfAuRyJiHhdUdXf6zx67HP1wg7MaLg9BJ6ghdqMSFEvx`
 
 Public key cryptography algorithms based on elliptic curves has many advantages, one of them
 being small key sizes. However, that benefit is not fully taken advantage of using common
@@ -11,7 +11,8 @@ Features
 * Compact representation
 * Using only copy-and-paste friendly characters
 * Relatively easy to visually confirm the format of a key
-* A small checksum is added to detect corrupted keys
+* A checksum is added, so a corrupted key can be detected
+
 
 ## Naming
 
@@ -47,15 +48,22 @@ E   ecdsa-sha2-nistp384 with odd y value
 F   ecdsa-sha2-nistp384 with even y value
 G   ecdsa-sha2-nistp521 with odd y value
 H   ecdsa-sha2-nistp521 with even y value
+I-W reserved for future use
+X   extended header
+Y-Z reserved for future use
 ```
 
 The different variations of the ECDSA family of keys maps to two different compressed y values
 as described in the elliptic curve point compression scheme in SEC 1 Section 2.3.3.
 
+The extended header value is a mechanism for future extensibility, where the value X indicates
+that an extended header to be defined at a later date is prepended to the key data. 
+
 ### Checksum
 
 The crd16 checksum is calculated over the first 6 characters of the key converted to bytes
-using the US-ASCII character set, followed by the key bits.
+using the US-ASCII character set, followed by the key bits. Please note that this checksum
+algorithm is expected to work the same even for future versions of this format. 
 
 ### Base62 encoding
 
