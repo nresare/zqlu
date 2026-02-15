@@ -1,9 +1,9 @@
 # zqlu
 
-zqlu is a text based format for public keys that is efficient and convenient. 
+zqlu is a text-based format for public keys designed to be efficient and convenient. 
 A key looks something like this: `zq.luCDfAuRyJiHhdUdXf6zx67HP1wg7MaLg9BJ6ghdqMSFEvx`
 
-Public key cryptography algorithms based on elliptic curves has many advantages, one of them
+Public key cryptography algorithms based on elliptic curves have many advantages, one of them
 being small key sizes. However, that benefit is not fully taken advantage of using common
 key encoding methods such as OpenSSH or PEM.
 
@@ -13,25 +13,29 @@ Features
 * Relatively easy to visually confirm the format of a key
 * A checksum is added, so a corrupted key can be detected
 
+## Credits and prior art
+
+The design of zqlu was influenced by the [nkey](https://github.com/nats-io/nkeys) format. Thank you
+for the inspiration!
 
 ## Naming
 
-I picked zqlu because I had the idea to use a very short domain name for the magic number
-at the beginning of each key. It would be unique and if you encounter a key somewhere without
-context, you can use the first 5 bytes as a web address and get more information about the format.
+I picked zqlu because I had the idea to use a very short domain name for the magic value
+at the beginning of each key. It would be unique, and if you encounter a key somewhere without
+context, you can use the first five bytes as a web address and get more information about the format.
 It turned out that zq.lu was available for registration, so that determined the name.
 
 ## Format
 
-zqlu is a text based format that encodes keys into the upper and lower case alphanumeric characters, 
+zqlu is a text-based format that encodes keys into the upper and lower case alphanumeric characters, 
 numbers 0 through 9, and the period character "." as defined in the Basic Latin chart in the Unicode 
 standard.
 
-Each key consists of 3 parts:
+Each key consists of three parts:
 
 * The identifier string `zq.lu`
 * The key type character
-* The binary key data in a key specific encoding, concatenated with a crc16 checksum and encoded 
+* The binary key data in a key-specific encoding, concatenated with a crc16 checksum and encoded 
   with Base62
 
 Every key starts with the string `zq.lu` identifying the format. 
@@ -62,8 +66,12 @@ that an extended header to be defined at a later date is prepended to the key da
 ### Checksum
 
 The crd16 checksum is calculated over the first 6 characters of the key converted to bytes
-using the US-ASCII character set, followed by the key bits. Please note that this checksum
-algorithm is expected to work the same even for future versions of this format. 
+using the US-ASCII character set, followed by the key bits. Once calculated, the checksum is
+appended to the key data in network byte order. The specific algorithm we use is CRC-16/IBM-STLC 
+as specified in RFC 1662, so the  string `123456789` should produce the value `0x906e`
+
+Please note that this checksum algorithm will work the same even for future 
+versions of this format. 
 
 ### Base62 encoding
 
