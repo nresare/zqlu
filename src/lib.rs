@@ -3,12 +3,12 @@ mod convert;
 mod test;
 
 use codeckit::Base62;
-use crc::{Crc, CRC_16_IBM_SDLC};
+use crc::{CRC_16_IBM_SDLC, Crc};
 use num_enum::TryFromPrimitive;
+use p256::NistP256;
 use p256::elliptic_curve::point::DecompressPoint;
 use p256::elliptic_curve::sec1::ToEncodedPoint;
 use p256::elliptic_curve::subtle::Choice;
-use p256::NistP256;
 use p384::NistP384;
 use p521::NistP521;
 use primeorder::elliptic_curve::sec1::{EncodedPoint, ModulusSize};
@@ -91,7 +91,7 @@ impl Zqlu {
 
         let key_type = try_get_type(input)?;
         for c in input.chars().skip(6) {
-            if !c.is_ascii_alphanumeric() {
+            if !c.is_ascii_alphanumeric() && !c.is_ascii_whitespace() {
                 bail_ii!("Invalid character in Zqlu key")
             }
         }
@@ -154,10 +154,7 @@ fn to_public_key(key: &[u8], key_type: ZqluKeyType) -> Result<PublicKey, ZqluErr
     })
 }
 
-fn decompress<C>(
-    x: &[u8],
-    y_is_even: bool,
-) -> Result<EncodedPoint<C>, ZqluError>
+fn decompress<C>(x: &[u8], y_is_even: bool) -> Result<EncodedPoint<C>, ZqluError>
 where
     C: PrimeCurveParams + CurveArithmetic,
     AffinePoint<C>: DecompressPoint<C> + ToEncodedPoint<C>,
@@ -272,5 +269,4 @@ mod tests {
         assert_eq!(public_key.to_openssh()?, str!("p521.openssh"));
         Ok(())
     }
-
 }

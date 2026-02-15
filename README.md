@@ -1,7 +1,7 @@
 # zqlu
 
 zqlu is a text-based format for public keys designed to be efficient and convenient. 
-A key looks something like this: `zq.luCDfAuRyJiHhdUdXf6zx67HP1wg7MaLg9BJ6ghdqMSFEvx`
+A key looks something like this: `zq.luAAhI0TjjRFd5K5vfy4hig23m7bppmotzOLVIkwFnPMfVWDp`
 
 Public key cryptography algorithms based on elliptic curves have many advantages, one of them
 being small key sizes. However, that benefit is not fully taken advantage of using common
@@ -57,8 +57,9 @@ X   extended header
 Y-Z reserved for future use
 ```
 
-The different variations of the ECDSA family of keys maps to two different compressed y values
-as described in the elliptic curve point compression scheme in SEC 1 Section 2.3.3.
+The different variations belonging to the ECDSA family of keys map to two different 
+compressed y values as described in the elliptic curve point compression scheme 
+in SEC 1 Section 2.3.3.
 
 The extended header value is a mechanism for future extensibility, where the value X indicates
 that an extended header to be defined at a later date is prepended to the key data. 
@@ -77,3 +78,8 @@ versions of this format.
 
 The alphabet used for base62 encoding the binary key data uses an alphabet containing the
 numbers 0-9 followed by the upper case letters A-Z and lower case letters a-z.
+
+### White space
+
+Ascii whitespace characters are ignored in the key, which means that a key can be stored in a
+multiline string, or even indented to match some formatting if put in say a YAML file.
