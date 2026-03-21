@@ -79,6 +79,16 @@ versions of this format.
 The alphabet used for base62 encoding the binary key data uses an alphabet containing the
 numbers 0-9 followed by the upper case letters A-Z and lower case letters a-z.
 
+When encoding binary data as Base62, the key data plus checksum is treated as a big-endian
+integer. This means that leading zero bytes would otherwise be lost. To preserve them, each
+leading zero byte is encoded as a leading `0` character in the Base62 output, followed by the
+Base62 encoding of the remaining bytes.
+
+This follows the same general approach as the [Base58 encoding draft](https://datatracker.ietf.org/doc/html/draft-msporny-base58),
+which preserves leading zero bytes using a dedicated leading character. In Base58 that
+character is `1`, because `1` is the zero-valued digit in the Bitcoin Base58 alphabet. In
+zqlu Base62, the corresponding character is `0`, because the alphabet begins with `0`.
+
 ### White space
 
 Ascii whitespace characters are ignored in the key, which means that a key can be stored in a

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 The zqlu project contributors
 
+mod base62;
 mod convert;
 #[cfg(test)]
 mod test;
 
-use codeckit::Base62;
 use crc::{CRC_16_IBM_SDLC, Crc};
 use num_enum::TryFromPrimitive;
 use p256::NistP256;
@@ -96,25 +96,6 @@ macro_rules! bail_ii {
 use ZqluError::UnsupportedKeyType;
 pub(crate) use bail_ii;
 
-pub(crate) fn encode_base62(input: &[u8]) -> String {
-    let leading_zeroes = input.iter().take_while(|&&byte| byte == 0).count();
-    let encoded = Base62::encode(input);
-
-    if leading_zeroes == 0 {
-        encoded
-    } else {
-        format!(
-            "{}{}",
-            "0".repeat(leading_zeroes),
-            &encoded[leading_zeroes..]
-        )
-    }
-}
-
-pub(crate) fn decode_base62(input: &str) -> Vec<u8> {
-    Base62::decode(input)
-}
-
 impl Zqlu {
     pub fn new(input: impl AsRef<str>) -> Result<Self, ZqluError> {
         let input = input.as_ref();
@@ -129,7 +110,7 @@ impl Zqlu {
                 bail_ii!("Invalid character in Zqlu key")
             }
         }
-        let key_and_checksum = decode_base62(&input[6..]);
+        let key_and_checksum = base62::decode(&input[6..]);
 
         validate_crc(key_type, &key_and_checksum)?;
 
