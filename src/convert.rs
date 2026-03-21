@@ -1,6 +1,5 @@
-use crate::{Zqlu, ZqluError, ZqluKeyType, bail_ii};
+use crate::{Zqlu, ZqluError, ZqluKeyType, bail_ii, encode_base62};
 use bytes::{BufMut, BytesMut};
-use codeckit::Base62;
 use crc::{CRC_16_IBM_SDLC, Crc};
 use ssh_key::PublicKey;
 use ssh_key::public::{EcdsaPublicKey, KeyData};
@@ -50,7 +49,7 @@ pub fn from_public_key(input: &PublicKey) -> Result<Zqlu, ZqluError> {
     Zqlu::new(format!(
         "zq.lu{}{}",
         char::from(key_type as u8),
-        Base62::encode(&buf)
+        encode_base62(&buf)
     ))
 }
 

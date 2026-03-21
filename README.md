@@ -83,3 +83,16 @@ numbers 0-9 followed by the upper case letters A-Z and lower case letters a-z.
 
 Ascii whitespace characters are ignored in the key, which means that a key can be stored in a
 multiline string, or even indented to match some formatting if put in say a YAML file.
+
+## Rust usage
+
+If you already parse SSH public keys with `ssh_key::PublicKey::from_openssh()`, the smallest
+change is to switch those call sites to `zqlu::parse()`:
+
+```rust
+let public_key = zqlu::parse(input)?;
+```
+
+This returns `ssh_key::PublicKey` and accepts standard OpenSSH public key text, a `zq.lu...`
+key, or a PEM/SPKI public key such as OpenSSL emits from `openssl ec -pubout` or
+`openssl pkey -pubout`.

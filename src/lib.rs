@@ -6,6 +6,8 @@ use codeckit::Base62;
 use crc::{CRC_16_IBM_SDLC, Crc};
 use num_enum::TryFromPrimitive;
 use p256::NistP256;
+use p256::elliptic_curve::pkcs8::der::Document;
+use p256::elliptic_curve::pkcs8::{DecodePublicKey, SubjectPublicKeyInfoRef};
 use p256::elliptic_curve::point::DecompressPoint;
 use p256::elliptic_curve::sec1::ToEncodedPoint;
 use p256::elliptic_curve::subtle::Choice;
@@ -27,6 +29,16 @@ pub enum ZqluError {
     InvalidInput(String),
     #[error("Zqlu does not yet support the supplied key type")]
     UnsupportedKeyType,
+}
+
+#[derive(Error, Debug)]
+pub enum ParsePublicKeyError {
+    #[error("Failed to parse the provided input as OpenSSH, zqlu, or PEM/SPKI public key text")]
+    InvalidInput {
+        openssh: ssh_key::Error,
+        zqlu: ZqluError,
+        pem: ZqluError,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive)]
@@ -81,6 +93,25 @@ macro_rules! bail_ii {
 use ZqluError::UnsupportedKeyType;
 pub(crate) use bail_ii;
 
+pub(crate) fn encode_base62(input: &[u8]) -> String {
+    let leading_zeroes = input.iter().take_while(|&&byte| byte == 0).count();
+    let encoded = Base62::encode(input);
+
+    if leading_zeroes == 0 {
+        encoded
+    } else {
+        format!(
+            "{}{}",
+            "0".repeat(leading_zeroes),
+            &encoded[leading_zeroes..]
+        )
+    }
+}
+
+pub(crate) fn decode_base62(input: &str) -> Vec<u8> {
+    Base62::decode(input)
+}
+
 impl Zqlu {
     pub fn new(input: impl AsRef<str>) -> Result<Self, ZqluError> {
         let input = input.as_ref();
@@ -95,7 +126,7 @@ impl Zqlu {
                 bail_ii!("Invalid character in Zqlu key")
             }
         }
-        let key_and_checksum = Base62::decode(&input[6..]);
+        let key_and_checksum = decode_base62(&input[6..]);
 
         validate_crc(key_type, &key_and_checksum)?;
 
@@ -115,6 +146,130 @@ impl Zqlu {
     pub fn public_key(&self) -> &PublicKey {
         &self.1
     }
+}
+
+pub fn parse(input: impl AsRef<str>) -> Result<PublicKey, ParsePublicKeyError> {
+    let input = input.as_ref().trim();
+
+    match PublicKey::from_openssh(input) {
+        Ok(key) => Ok(key),
+        Err(openssh) => match Zqlu::new(input) {
+            Ok(zqlu) => Ok(zqlu.public_key().clone()),
+            Err(zqlu) => match parse_pem_public_key(input) {
+                Ok(key) => Ok(key),
+                Err(pem) => Err(ParsePublicKeyError::InvalidInput { openssh, zqlu, pem }),
+            },
+        },
+    }
+}
+
+fn parse_pem_public_key(input: &str) -> Result<PublicKey, ZqluError> {
+    if !input.starts_with("-----BEGIN PUBLIC KEY-----") {
+        bail_ii!("Input is not a PEM public key")
+    }
+
+    let pem = if input.ends_with('\n') {
+        input.to_owned()
+    } else {
+        format!("{input}\n")
+    };
+
+    let ed25519 = parse_ed25519_pem_public_key(&pem);
+    if let Ok(key) = ed25519 {
+        return Ok(key);
+    }
+
+    let p256 = parse_p256_pem_public_key(&pem);
+    if let Ok(key) = p256 {
+        return Ok(key);
+    }
+
+    let p384 = parse_p384_pem_public_key(&pem);
+    if let Ok(key) = p384 {
+        return Ok(key);
+    }
+
+    let p521 = parse_p521_pem_public_key(&pem);
+    if let Ok(key) = p521 {
+        return Ok(key);
+    }
+
+    Err(ZqluError::InvalidInput(format!(
+        "Failed to parse PEM public key as Ed25519 ({}) P-256 ({}) P-384 ({}) or P-521 ({})",
+        match ed25519 {
+            Err(err) => err,
+            Ok(_) => unreachable!(),
+        },
+        match p256 {
+            Err(err) => err,
+            Ok(_) => unreachable!(),
+        },
+        match p384 {
+            Err(err) => err,
+            Ok(_) => unreachable!(),
+        },
+        match p521 {
+            Err(err) => err,
+            Ok(_) => unreachable!(),
+        }
+    )))
+}
+
+fn parse_ed25519_pem_public_key(input: &str) -> Result<PublicKey, ZqluError> {
+    let (_label, doc) = Document::from_pem(input)
+        .map_err(|err| ZqluError::InvalidInput(format!("Failed to parse PEM public key: {err}")))?;
+    let spki = SubjectPublicKeyInfoRef::try_from(doc.as_bytes()).map_err(|err| {
+        ZqluError::InvalidInput(format!("Failed to parse SPKI public key: {err}"))
+    })?;
+
+    if spki.algorithm.oid
+        != p256::elliptic_curve::pkcs8::ObjectIdentifier::new_unwrap("1.3.101.112")
+    {
+        bail_ii!("PEM public key is not Ed25519")
+    }
+
+    if spki.algorithm.parameters.is_some() {
+        bail_ii!("Ed25519 PEM public key must not have algorithm parameters")
+    }
+
+    let key_bytes = spki.subject_public_key.as_bytes().ok_or_else(|| {
+        ZqluError::InvalidInput("Ed25519 PEM public key contains an invalid bit string".into())
+    })?;
+    let key = ssh_key::public::Ed25519PublicKey::try_from(key_bytes).map_err(|err| {
+        ZqluError::InvalidInput(format!("Failed to parse Ed25519 public key: {err}"))
+    })?;
+
+    Ok(PublicKey::from(key))
+}
+
+fn parse_p256_pem_public_key(input: &str) -> Result<PublicKey, ZqluError> {
+    let key = p256::PublicKey::from_public_key_pem(input)
+        .map_err(|err| ZqluError::InvalidInput(format!("Failed to parse PEM public key: {err}")))?;
+    let encoded = key.to_encoded_point(false);
+    let key = EcdsaPublicKey::from_sec1_bytes(encoded.as_bytes()).map_err(|err| {
+        ZqluError::InvalidInput(format!("Failed to parse SEC1 public key: {err}"))
+    })?;
+    Ok(PublicKey::from(key))
+}
+
+fn parse_p384_pem_public_key(input: &str) -> Result<PublicKey, ZqluError> {
+    let key = p384::PublicKey::from_public_key_pem(input)
+        .map_err(|err| ZqluError::InvalidInput(format!("Failed to parse PEM public key: {err}")))?;
+    let encoded = key.to_encoded_point(false);
+    let key = EcdsaPublicKey::from_sec1_bytes(encoded.as_bytes()).map_err(|err| {
+        ZqluError::InvalidInput(format!("Failed to parse SEC1 public key: {err}"))
+    })?;
+    Ok(PublicKey::from(key))
+}
+
+fn parse_p521_pem_public_key(input: &str) -> Result<PublicKey, ZqluError> {
+    let key = p521::PublicKey::from_public_key_pem(input)
+        .map_err(|err| ZqluError::InvalidInput(format!("Failed to parse PEM public key: {err}")))?;
+    let encoded = key.to_encoded_point(false);
+    let key = EcdsaPublicKey::from_sec1_bytes(encoded.as_bytes()).map_err(|err| {
+        ZqluError::InvalidInput(format!("Failed to parse SEC1 public key: {err}"))
+    })?;
+    Ok(PublicKey::from(key))
 }
 
 fn to_public_key(key: &[u8], key_type: ZqluKeyType) -> Result<PublicKey, ZqluError> {
@@ -206,8 +361,18 @@ impl PartialEq<&str> for Zqlu {
 #[cfg(test)]
 mod tests {
     use crate::test::str;
-    use crate::{Zqlu, ZqluError};
+    use crate::{ParsePublicKeyError, Zqlu, ZqluError, parse};
     use anyhow::Result;
+
+    fn assert_pem_roundtrip(input: &str, openssh_prefix: &str) -> Result<()> {
+        let key = parse(input)?;
+        let openssh = key.to_openssh()?;
+        assert!(openssh.starts_with(openssh_prefix));
+
+        let zqlu = Zqlu::from_public_key(&key)?;
+        assert_eq!(zqlu.public_key().to_openssh()?, openssh);
+        Ok(())
+    }
 
     #[test]
     fn test_zqlu_new() -> Result<()> {
@@ -236,6 +401,55 @@ mod tests {
             Err(ZqluError::InvalidInput(_))
         ));
         Ok(())
+    }
+
+    #[test]
+    fn test_parse_openssh() -> Result<()> {
+        let key = parse(str!("ed25519.openssh"))?;
+        assert_eq!(key.to_openssh()?, str!("ed25519.openssh"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_zqlu() -> Result<()> {
+        let key = parse(str!("ed25519.zq"))?;
+        assert_eq!(key.to_openssh()?, str!("ed25519.openssh"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_ed25519_pem() -> Result<()> {
+        assert_pem_roundtrip(str!("ed25519.pem"), "ssh-ed25519 ")
+    }
+
+    #[test]
+    fn test_parse_p256_pem() -> Result<()> {
+        assert_pem_roundtrip(str!("p256.pem"), "ecdsa-sha2-nistp256 ")
+    }
+
+    #[test]
+    fn test_parse_p384_pem() -> Result<()> {
+        assert_pem_roundtrip(str!("p384.pem"), "ecdsa-sha2-nistp384 ")
+    }
+
+    #[test]
+    fn test_parse_p521_pem() -> Result<()> {
+        assert_pem_roundtrip(str!("p521.pem"), "ecdsa-sha2-nistp521 ")
+    }
+
+    #[test]
+    fn test_parse_trimmed() -> Result<()> {
+        let key = parse(format!("\n  {}\n", str!("ed25519.zq")))?;
+        assert_eq!(key.to_openssh()?, str!("ed25519.openssh"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_invalid() {
+        assert!(matches!(
+            parse("not a key"),
+            Err(ParsePublicKeyError::InvalidInput { .. })
+        ));
     }
 
     #[test]
