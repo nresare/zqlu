@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright (c) 2026 The zqlu project contributors
+
 use crate::{Zqlu, ZqluError, ZqluKeyType, bail_ii, encode_base62};
 use bytes::{BufMut, BytesMut};
 use crc::{CRC_16_IBM_SDLC, Crc};
