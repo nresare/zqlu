@@ -93,6 +93,16 @@ change is to switch those call sites to `zqlu::parse()`:
 let public_key = zqlu::parse(input)?;
 ```
 
-This returns `ssh_key::PublicKey` and accepts standard OpenSSH public key text, a `zq.lu...`
+This returns `ssh_key::PublicKey` and accepts standard OpenSSH public key text, a `zqlu`
 key, or a PEM/SPKI public key such as OpenSSL emits from `openssl ec -pubout` or
 `openssl pkey -pubout`.
+
+
+## License
+
+This project is licensed under either of:
+
+- MIT
+- Apache-2.0
+
+at your option.
