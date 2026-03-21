@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 The zqlu project contributors
 
-use crate::{Zqlu, ZqluError, ZqluKeyType, bail_ii, encode_base62};
+use crate::{Zqlu, ZqluError, ZqluKeyType, bail_ii, base62};
 use bytes::{BufMut, BytesMut};
 use crc::{CRC_16_IBM_SDLC, Crc};
 use ssh_key::PublicKey;
@@ -52,7 +52,7 @@ pub fn from_public_key(input: &PublicKey) -> Result<Zqlu, ZqluError> {
     Zqlu::new(format!(
         "zq.lu{}{}",
         char::from(key_type as u8),
-        encode_base62(&buf)
+        base62::encode(&buf)
     ))
 }
 
@@ -76,6 +76,14 @@ mod tests {
         let key = str!("p256.openssh");
         let key = PublicKey::from_openssh(key)?;
         assert_eq!(from_public_key(&key)?, str!("p256.zq"),);
+        Ok(())
+    }
+
+    #[test]
+    fn test_from_public_key_p256_leading_zero() -> Result<()> {
+        let key = str!("p256-leading-zero.openssh");
+        let key = PublicKey::from_openssh(key)?;
+        assert_eq!(from_public_key(&key)?, str!("p256-leading-zero.zq"),);
         Ok(())
     }
 
