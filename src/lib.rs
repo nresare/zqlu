@@ -11,19 +11,15 @@ use num_enum::TryFromPrimitive;
 use p256::NistP256;
 use p256::elliptic_curve::pkcs8::der::Document;
 use p256::elliptic_curve::pkcs8::{DecodePublicKey, SubjectPublicKeyInfoRef};
-use p256::elliptic_curve::point::DecompressPoint;
-use p256::elliptic_curve::sec1::ToEncodedPoint;
-use p256::elliptic_curve::subtle::Choice;
+use p256::elliptic_curve::sec1::{FromEncodedPoint, ToEncodedPoint};
 use p384::NistP384;
 use p521::NistP521;
 use primeorder::elliptic_curve::sec1::{EncodedPoint, ModulusSize};
 use primeorder::elliptic_curve::{CurveArithmetic, FieldBytesSize};
-use primeorder::generic_array::GenericArray;
 use primeorder::{AffinePoint, PrimeCurveParams};
 use ssh_key::public::EcdsaPublicKey;
 use ssh_key::{EcdsaCurve, PublicKey};
 use std::fmt::{Display, Formatter};
-use std::ops::Not;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -301,12 +297,16 @@ fn to_public_key(key: &[u8], key_type: ZqluKeyType) -> Result<PublicKey, ZqluErr
 fn decompress<C>(x: &[u8], y_is_even: bool) -> Result<EncodedPoint<C>, ZqluError>
 where
     C: PrimeCurveParams + CurveArithmetic,
-    AffinePoint<C>: DecompressPoint<C> + ToEncodedPoint<C>,
+    AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
     FieldBytesSize<C>: ModulusSize,
 {
-    let y_is_odd = Choice::from(y_is_even as u8).not();
-    let x_bytes = GenericArray::from_slice(x);
-    let point: AffinePoint<C> = AffinePoint::decompress(x_bytes, y_is_odd)
+    let mut compressed = Vec::with_capacity(x.len() + 1);
+    compressed.push(if y_is_even { 0x02 } else { 0x03 });
+    compressed.extend_from_slice(x);
+
+    let encoded = EncodedPoint::<C>::from_bytes(compressed)
+        .map_err(|_| ZqluError::InvalidInput("Invalid key data".into()))?;
+    let point: AffinePoint<C> = AffinePoint::from_encoded_point(&encoded)
         .into_option()
         .ok_or(ZqluError::InvalidInput("Invalid key data".into()))?;
     Ok(point.to_encoded_point(false))
