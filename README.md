@@ -69,7 +69,7 @@ that an extended header to be defined at a later date is prepended to the key da
 The crd16 checksum is calculated over the first 6 characters of the key converted to bytes
 using the US-ASCII character set, followed by the key bits. Once calculated, the checksum is
 appended to the key data in network byte order. The specific algorithm we use is CRC-16/IBM-STLC 
-as specified in RFC 1662, so the  string `123456789` should produce the value `0x906e`
+as specified in RFC 1662, so the string `123456789` should produce the value `0x906e`
 
 Please note that this checksum algorithm will work the same even for future 
 versions of this format. 
@@ -80,7 +80,7 @@ The alphabet used for base62 encoding the binary key data uses an alphabet conta
 numbers 0-9 followed by the upper case letters A-Z and lower case letters a-z.
 
 When encoding binary data as Base62, the key data plus checksum is treated as a big-endian
-integer. This means that leading zero bytes would otherwise be lost. To preserve them, each
+integer. This means that leading zero bytes would normally be lost. To preserve them, each
 leading zero byte is encoded as a leading `0` character in the Base62 output, followed by the
 Base62 encoding of the remaining bytes.
 
@@ -91,8 +91,9 @@ zqlu Base62, the corresponding character is `0`, because the alphabet begins wit
 
 ### White space
 
-Ascii whitespace characters are ignored in the key, which means that a key can be stored in a
-multiline string, or even indented to match some formatting if put in say a YAML file.
+ASCII whitespace and newline characters are ignored in the key, which means that a key 
+can be stored in a multiline string, or even indented to match some formatting if put 
+in for example a YAML file.
 
 ## Rust usage
 
@@ -104,7 +105,7 @@ let public_key = zqlu::parse(input)?;
 ```
 
 This returns `ssh_key::PublicKey` and accepts standard OpenSSH public key text, a `zqlu`
-key, or a PEM/SPKI public key such as OpenSSL emits from `openssl ec -pubout` or
+key, or a PEM/SPKI public key such as what OpenSSL emits from `openssl ec -pubout` or
 `openssl pkey -pubout`.
 
 
