@@ -45,14 +45,17 @@ terminology of the ssh specifications. The table below maps keys to their equiva
 
 ```
 A   ssh-ed25519
-B   ssh-rsa
+B   ssh-rsa, 2048-bit modulus with exponent 65537
 C   ecdsa-sha2-nistp256 with odd y value
 D   ecdsa-sha2-nistp256 with even y value
 E   ecdsa-sha2-nistp384 with odd y value
 F   ecdsa-sha2-nistp384 with even y value
 G   ecdsa-sha2-nistp521 with odd y value
 H   ecdsa-sha2-nistp521 with even y value
-I-W reserved for future use
+I   ssh-rsa, 3072-bit modulus with exponent 65537
+J   ssh-rsa, 4096-bit modulus with exponent 65537
+K   ssh-rsa, exotic parameters
+L-W reserved for future use
 X   extended header
 Y-Z reserved for future use
 ```
@@ -60,6 +63,20 @@ Y-Z reserved for future use
 The different variations belonging to the ECDSA family of keys map to two different 
 compressed y values as described in the elliptic curve point compression scheme 
 in SEC 1 Section 2.3.3.
+
+The RSA key types `B`, `I`, and `J` are compact encodings for common RSA public keys
+using the Fermat F4 public exponent 65537, or `2**16 + 1`. Their key data is the
+unsigned big-endian modulus encoded in exactly 256, 384, or 512 octets, respectively.
+The fixed-length modulus MUST match the modulus size implied by the key type character.
+
+The RSA key type `K` is reserved for RSA public keys that do not fit the compact
+`B`, `I`, or `J` profiles. Its key data is a sequence of two length-value fields: the
+public exponent followed by the modulus. Each value is encoded as an unsigned
+big-endian integer using the minimum number of octets needed to represent it, with no
+leading zero octets. Each length is encoded as an unsigned base-128 variable-length
+integer: the low seven bits of each octet carry data, the high bit is set when another
+length octet follows, and the least significant seven-bit group is encoded first. This
+is the same integer representation used by Protocol Buffers varints.
 
 The extended header value is a mechanism for future extensibility, where the value X indicates
 that an extended header to be defined at a later date is prepended to the key data. 
