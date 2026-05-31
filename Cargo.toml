@@ -7,15 +7,15 @@ description = "zqlu is a convenient text-based format for public keys"
 homepage = "https://zq.lu"
 
 [dependencies]
-ssh-key = { version = "0.6.7"}
-codeckit = "0.1.1"
-clap = { version = "4.5.58", features = ["derive"] }
-anyhow = "1.0.101"
-thiserror = "2.0.18"
-bytes = "1.11.1"
-crc = "3.4.0"
-num_enum = "0.7.5"
-p384 = "0.13.1"
-p256 = "0.13.2"
-p521 = "0.13.3"
-primeorder = "0.13.6"
+ssh-key = { version = "0.6"}
+codeckit = "0.1"
+clap = { version = "4.6", features = ["derive"] }
+anyhow = "1.0"
+thiserror = "2.0"
+crc = "3.4"
+num_enum = "0.7"
+p256 = "0.13"
+p384 = "0.13"
+p521 = "0.13"
+primeorder = "0.13"
+bytes = "1.11"
