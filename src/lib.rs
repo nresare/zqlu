@@ -98,7 +98,12 @@ pub(crate) use bail_ii;
 
 impl Zqlu {
     pub fn new(input: impl AsRef<str>) -> Result<Self, ZqluError> {
-        let input = input.as_ref();
+        let input: String = input
+            .as_ref()
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        let input = input.as_str();
 
         if !input.starts_with("zq.lu") {
             bail_ii!("Input must start with 'zq.lu'")
@@ -106,7 +111,7 @@ impl Zqlu {
 
         let key_type = try_get_type(input)?;
         for c in input.chars().skip(6) {
-            if !c.is_ascii_alphanumeric() && !c.is_ascii_whitespace() {
+            if !c.is_ascii_alphanumeric() {
                 bail_ii!("Invalid character in Zqlu key")
             }
         }
@@ -398,6 +403,33 @@ mod tests {
     fn test_parse_zqlu() -> Result<()> {
         let key = parse(str!("ed25519.zq"))?;
         assert_eq!(key.to_openssh()?, str!("ed25519.openssh"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_zqlu_with_embedded_whitespace() -> Result<()> {
+        let input = str!("ed25519.zq");
+        let embedded = format!(
+            "{}\n {} \t{}\r{}",
+            &input[..10],
+            &input[10..20],
+            &input[20..30],
+            &input[30..],
+        );
+
+        let key = parse(embedded)?;
+        assert_eq!(key.to_openssh()?, str!("ed25519.openssh"));
+
+        for position in 0..=4 {
+            let input = format!("{}\n \t\r{}", &input[..position], &input[position..]);
+            let key = parse(input)?;
+            assert_eq!(key.to_openssh()?, str!("ed25519.openssh"));
+        }
+
+        let input = format!("{}\u{00a0}{}", &input[..10], &input[10..]);
+        let key = parse(input)?;
+        assert_eq!(key.to_openssh()?, str!("ed25519.openssh"));
+
         Ok(())
     }
 
