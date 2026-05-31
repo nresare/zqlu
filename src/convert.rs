@@ -5,7 +5,9 @@ use crate::{Zqlu, ZqluError, ZqluKeyType, bail_ii, base62};
 use bytes::{BufMut, BytesMut};
 use crc::{CRC_16_IBM_SDLC, Crc};
 use ssh_key::PublicKey;
-use ssh_key::public::{EcdsaPublicKey, KeyData};
+use ssh_key::public::{EcdsaPublicKey, KeyData, RsaPublicKey};
+
+const RSA_F4: &[u8] = &[0x01, 0x00, 0x01];
 
 fn serialise_ecdsa(key: &EcdsaPublicKey, buf: &mut BytesMut) -> Result<ZqluKeyType, ZqluError> {
     let bytes = key.as_ref();
@@ -25,6 +27,48 @@ fn serialise_ecdsa(key: &EcdsaPublicKey, buf: &mut BytesMut) -> Result<ZqluKeyTy
     Ok(ZqluKeyType::from_curve_and_compressed_y(key.curve(), even))
 }
 
+fn serialise_rsa(key: &RsaPublicKey, buf: &mut BytesMut) -> Result<ZqluKeyType, ZqluError> {
+    let exponent = key
+        .e
+        .as_positive_bytes()
+        .ok_or_else(|| ZqluError::InvalidInput("RSA exponent must be positive".into()))?;
+    let modulus = key
+        .n
+        .as_positive_bytes()
+        .ok_or_else(|| ZqluError::InvalidInput("RSA modulus must be positive".into()))?;
+
+    if exponent == RSA_F4 {
+        let key_type = match modulus.len() {
+            256 => Some(ZqluKeyType::Rsa2048),
+            384 => Some(ZqluKeyType::Rsa3072),
+            512 => Some(ZqluKeyType::Rsa4096),
+            _ => None,
+        };
+
+        if let Some(key_type) = key_type {
+            buf.put_slice(modulus);
+            return Ok(key_type);
+        }
+    }
+
+    put_length_value(exponent, buf);
+    put_length_value(modulus, buf);
+    Ok(ZqluKeyType::RsaExotic)
+}
+
+fn put_length_value(value: &[u8], buf: &mut BytesMut) {
+    put_varint(value.len(), buf);
+    buf.put_slice(value);
+}
+
+fn put_varint(mut value: usize, buf: &mut BytesMut) {
+    while value >= 0x80 {
+        buf.put_u8((value as u8 & 0x7f) | 0x80);
+        value >>= 7;
+    }
+    buf.put_u8(value as u8);
+}
+
 fn serialise_key(key: &PublicKey, buf: &mut BytesMut) -> Result<ZqluKeyType, ZqluError> {
     Ok(match key.key_data() {
         KeyData::Ecdsa(key) => serialise_ecdsa(key, buf)?,
@@ -32,9 +76,7 @@ fn serialise_key(key: &PublicKey, buf: &mut BytesMut) -> Result<ZqluKeyType, Zql
             buf.put_slice(key.as_ref());
             ZqluKeyType::Ed25519
         }
-        KeyData::Rsa(_) => {
-            return Err(ZqluError::UnsupportedKeyType);
-        }
+        KeyData::Rsa(key) => serialise_rsa(key, buf)?,
         &_ => return Err(ZqluError::UnsupportedKeyType),
     })
 }
@@ -60,6 +102,7 @@ pub fn from_public_key(input: &PublicKey) -> Result<Zqlu, ZqluError> {
 mod tests {
     use crate::convert::from_public_key;
     use crate::test::str;
+    use crate::{Zqlu, ZqluKeyType};
     use anyhow::Result;
     use ssh_key::PublicKey;
 
@@ -100,6 +143,58 @@ mod tests {
         let key = str!("p521.openssh");
         let key = PublicKey::from_openssh(key)?;
         assert_eq!(from_public_key(&key)?, str!("p521.zq"),);
+        Ok(())
+    }
+
+    #[test]
+    fn test_from_public_key_rsa_2048() -> Result<()> {
+        let key = PublicKey::from_openssh(str!("rsa2048.openssh"))?;
+        let zqlu = from_public_key(&key)?;
+        assert_eq!(zqlu, str!("rsa2048.zq"));
+        assert_eq!(zqlu.get_key_type(), ZqluKeyType::Rsa2048);
+        assert_eq!(
+            Zqlu::new(str!("rsa2048.zq"))?.public_key().key_data(),
+            key.key_data()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_from_public_key_rsa_3072() -> Result<()> {
+        let key = PublicKey::from_openssh(str!("rsa3072.openssh"))?;
+        let zqlu = from_public_key(&key)?;
+        assert_eq!(zqlu, str!("rsa3072.zq"));
+        assert_eq!(zqlu.get_key_type(), ZqluKeyType::Rsa3072);
+        assert_eq!(
+            Zqlu::new(str!("rsa3072.zq"))?.public_key().key_data(),
+            key.key_data()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_from_public_key_rsa_4096() -> Result<()> {
+        let key = PublicKey::from_openssh(str!("rsa4096.openssh"))?;
+        let zqlu = from_public_key(&key)?;
+        assert_eq!(zqlu, str!("rsa4096.zq"));
+        assert_eq!(zqlu.get_key_type(), ZqluKeyType::Rsa4096);
+        assert_eq!(
+            Zqlu::new(str!("rsa4096.zq"))?.public_key().key_data(),
+            key.key_data()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_from_public_key_rsa_exotic() -> Result<()> {
+        let key = PublicKey::from_openssh(str!("rsa2048-e3.openssh"))?;
+        let zqlu = from_public_key(&key)?;
+        assert_eq!(zqlu, str!("rsa2048-e3.zq"));
+        assert_eq!(zqlu.get_key_type(), ZqluKeyType::RsaExotic);
+        assert_eq!(
+            Zqlu::new(str!("rsa2048-e3.zq"))?.public_key().key_data(),
+            key.key_data()
+        );
         Ok(())
     }
 }
