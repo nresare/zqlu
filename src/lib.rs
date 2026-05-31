@@ -20,8 +20,8 @@ use primeorder::elliptic_curve::sec1::{EncodedPoint, ModulusSize};
 use primeorder::elliptic_curve::{CurveArithmetic, FieldBytesSize};
 use primeorder::generic_array::GenericArray;
 use primeorder::{AffinePoint, PrimeCurveParams};
-use ssh_key::public::EcdsaPublicKey;
-use ssh_key::{EcdsaCurve, PublicKey};
+use ssh_key::public::{EcdsaPublicKey, RsaPublicKey};
+use ssh_key::{EcdsaCurve, Mpint, PublicKey};
 use std::fmt::{Display, Formatter};
 use std::ops::Not;
 use thiserror::Error;
@@ -48,13 +48,16 @@ pub enum ParsePublicKeyError {
 #[repr(u8)]
 pub enum ZqluKeyType {
     Ed25519 = b'A',
-    //    Rsa = b'B',
+    Rsa2048 = b'B',
     P256Odd = b'C',
     P256Even = b'D',
     P384Odd = b'E',
     P384Even = b'F',
     P521Odd = b'G',
     P521Even = b'H',
+    Rsa3072 = b'I',
+    Rsa4096 = b'J',
+    RsaExotic = b'K',
     EXT = b'X',
 }
 
@@ -294,8 +297,94 @@ fn to_public_key(key: &[u8], key_type: ZqluKeyType) -> Result<PublicKey, ZqluErr
             let encoded = decompress::<NistP521>(key, even)?;
             PublicKey::from(EcdsaPublicKey::NistP521(encoded))
         }
+        ZqluKeyType::Rsa2048 => rsa_from_fixed_modulus(key, 256)?,
+        ZqluKeyType::Rsa3072 => rsa_from_fixed_modulus(key, 384)?,
+        ZqluKeyType::Rsa4096 => rsa_from_fixed_modulus(key, 512)?,
+        ZqluKeyType::RsaExotic => rsa_from_length_value(key)?,
         _ => return Err(UnsupportedKeyType),
     })
+}
+
+fn rsa_from_fixed_modulus(modulus: &[u8], expected_len: usize) -> Result<PublicKey, ZqluError> {
+    if modulus.len() != expected_len {
+        bail_ii!("Invalid RSA modulus length")
+    }
+
+    let e = Mpint::from_positive_bytes(&[0x01, 0x00, 0x01])
+        .map_err(|err| ZqluError::InvalidInput(format!("Invalid RSA exponent: {err}")))?;
+    let n = Mpint::from_positive_bytes(modulus)
+        .map_err(|err| ZqluError::InvalidInput(format!("Invalid RSA modulus: {err}")))?;
+    Ok(PublicKey::from(RsaPublicKey { e, n }))
+}
+
+fn rsa_from_length_value(mut key: &[u8]) -> Result<PublicKey, ZqluError> {
+    let exponent = read_length_value(&mut key, "RSA exponent")?;
+    let modulus = read_length_value(&mut key, "RSA modulus")?;
+
+    if !key.is_empty() {
+        bail_ii!("Trailing data in RSA key")
+    }
+
+    let e = Mpint::from_positive_bytes(exponent)
+        .map_err(|err| ZqluError::InvalidInput(format!("Invalid RSA exponent: {err}")))?;
+    let n = Mpint::from_positive_bytes(modulus)
+        .map_err(|err| ZqluError::InvalidInput(format!("Invalid RSA modulus: {err}")))?;
+    Ok(PublicKey::from(RsaPublicKey { e, n }))
+}
+
+fn read_length_value<'a>(input: &mut &'a [u8], field_name: &str) -> Result<&'a [u8], ZqluError> {
+    let len = read_varint(input)?;
+
+    if len == 0 {
+        return Err(ZqluError::InvalidInput(format!("{field_name} is empty")));
+    }
+
+    if input.len() < len {
+        return Err(ZqluError::InvalidInput(format!(
+            "{field_name} length exceeds remaining RSA key data"
+        )));
+    }
+
+    let (value, rest) = input.split_at(len);
+    *input = rest;
+
+    if value.first().copied() == Some(0) {
+        return Err(ZqluError::InvalidInput(format!(
+            "{field_name} contains a leading zero octet"
+        )));
+    }
+
+    Ok(value)
+}
+
+fn read_varint(input: &mut &[u8]) -> Result<usize, ZqluError> {
+    let mut value = 0usize;
+    let mut shift = 0usize;
+
+    for (index, byte) in input.iter().copied().enumerate() {
+        let low_bits = usize::from(byte & 0x7f);
+        value = value
+            .checked_add(
+                low_bits
+                    .checked_shl(shift as u32)
+                    .ok_or_else(|| ZqluError::InvalidInput("RSA length varint overflow".into()))?,
+            )
+            .ok_or_else(|| ZqluError::InvalidInput("RSA length varint overflow".into()))?;
+
+        if byte & 0x80 == 0 {
+            *input = &input[index + 1..];
+            return Ok(value);
+        }
+
+        shift = shift
+            .checked_add(7)
+            .ok_or_else(|| ZqluError::InvalidInput("RSA length varint overflow".into()))?;
+        if shift >= usize::BITS as usize {
+            bail_ii!("RSA length varint overflow")
+        }
+    }
+
+    bail_ii!("Truncated RSA length varint")
 }
 
 fn decompress<C>(x: &[u8], y_is_even: bool) -> Result<EncodedPoint<C>, ZqluError>
