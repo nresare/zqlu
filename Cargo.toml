@@ -26,7 +26,7 @@ num_enum = "0.7"
 p256 = "0.13"
 p384 = "0.13"
 p521 = "0.13"
-primeorder = "0.13"
+primeorder = "0.14"
 bytes = "1.11"
 
 [dev-dependencies]
