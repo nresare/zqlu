@@ -23,7 +23,7 @@ anyhow = { version = "1.0", optional = true }
 thiserror = "2.0"
 crc = "3.4"
 num_enum = "0.7"
-p256 = "0.13"
+p256 = "0.14"
 p384 = "0.13"
 p521 = "0.13"
 primeorder = "0.13"
